@@ -1,5 +1,9 @@
 *
 !.gitignore
 !*.cs
+!*.sln
+!*.csproj
+!*.resx
+!*.config
 !/resources/
 !/resources/**
