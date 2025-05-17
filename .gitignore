@@ -5,5 +5,6 @@
 !*.csproj
 !*.resx
 !*.config
+!*.md
 !/resources/
 !/resources/**
