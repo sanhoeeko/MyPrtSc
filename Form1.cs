@@ -1,7 +1,5 @@
 ﻿using MyPrtSc.Properties;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
@@ -9,10 +7,9 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Management;
 
 namespace MyPrtSc
 {
@@ -45,9 +42,23 @@ namespace MyPrtSc
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         private AppConfig config;
+        private int border = 0;
 
         public Form1()
         {
@@ -101,10 +112,10 @@ namespace MyPrtSc
                 if (vkCode == VK_SNAPSHOT) // 检测 PrtSc 键
                 {
                     // 延时确保系统完成截图到剪贴板
-                    Timer timer = new Timer { Interval = 200 }; // 200ms 延时
+                    Timer timer = new Timer { Interval = 100 }; // 100ms 延时
                     timer.Tick += (s, e) =>
                     {
-                        SaveClipboardImage();
+                        ProcessClipboardImage();
                         timer.Stop();
                         timer.Dispose();
                     };
@@ -114,52 +125,61 @@ namespace MyPrtSc
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
         }
 
-        private void SaveClipboardImage()
+        private void ProcessClipboardImage()
         {
             try
             {
-                // 获取当前焦点窗口标题
-                const int nChars = 256;
-                StringBuilder windowTitle = new StringBuilder(nChars);
-                IntPtr hWnd = GetForegroundWindow();
-
-                string saveTitle;
-                if (GetWindowText(hWnd, windowTitle, nChars) > 0)
-                {
-                    // 过滤非法路径字符
-                    saveTitle = new string(windowTitle.ToString()
-                        .Where(c => !Path.GetInvalidFileNameChars().Contains(c))
-                        .ToArray()).Trim();
-
-                    if (string.IsNullOrEmpty(saveTitle))
-                        saveTitle = "Untitled";
-                }
-                else
-                {
-                    saveTitle = "Desktop";
-                }
-
-                // 转换乱码
-                if(config.IfAutoConvert)saveTitle= GbkValidator.ConvertGbkJisIfJis(saveTitle);
-
                 // 构建保存路径
-                string saveDir = Path.Combine(config.BaseDir, saveTitle);
+                string saveDir = Path.Combine(config.BaseDir, getSaveTitle());
                 string fileName = $"Screenshot_{DateTime.Now:yyyyMMdd_HHmmssfff}.png";
                 string path = Path.Combine(saveDir, fileName);
 
                 // 确保目录存在
-                if (!Directory.Exists(config.BaseDir))
-                    Directory.CreateDirectory(config.BaseDir);
+                if (!Directory.Exists(config.BaseDir))Directory.CreateDirectory(config.BaseDir);
+                if (!Directory.Exists(saveDir))Directory.CreateDirectory(saveDir);
 
-                if (!Directory.Exists(saveDir))
-                    Directory.CreateDirectory(saveDir);
-
-                // 保存图像（原保存逻辑）
+                // 保存图像
                 if (Clipboard.ContainsImage())
                 {
                     using (var image = Clipboard.GetImage())
                     {
-                        image.Save(path, ImageFormat.Png);
+                        if (config.IfOptimizePng)
+                        {
+                            using (var bmp = new Bitmap(image.Width, image.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                            {
+                                using (var g = Graphics.FromImage(bmp))
+                                {
+                                    // 将剪贴板中的图片写入Bitmap img
+                                    g.DrawImage(image, 0, 0);
+                                }
+                                using (var rgbBmp = MyImage.RemoveAlphaChannel(bmp))
+                                {
+                                    // 尝试多种filter，压缩png
+                                    var optimizedData = MyImage.OptimizePng(bmp);
+
+                                    // 保存
+                                    File.WriteAllBytes(path, optimizedData);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // 获取焦点窗口范围
+                            var windowBounds = getRectangle();
+                            if(IsFullScreen(windowBounds))
+                            {
+                                // 直接保存
+                                image.Save(path, ImageFormat.Png);
+                            }
+                            else
+                            {
+                                // 裁剪后保存
+                                using (var croppedImage = MyImage.CropImage(image, windowBounds, getSystemDpi()))
+                                {
+                                    croppedImage.Save(path, ImageFormat.Png);
+                                }
+                            }
+                        }
                         _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
                     }
                 }
@@ -169,10 +189,75 @@ namespace MyPrtSc
                 _trayIcon.ShowBalloonTip(3000, "错误", $"保存失败，发生了异常: {ex.Message}", ToolTipIcon.Error);
             }
         }
+        
+        private string getSaveTitle()
+        {
+            // 获取当前焦点窗口标题
+            const int nChars = 256;
+            StringBuilder windowTitle = new StringBuilder(nChars);
+            IntPtr hWnd = GetForegroundWindow();
 
-        private void Form1_Load(object sender, EventArgs e)
+            string saveTitle;
+            if (GetWindowText(hWnd, windowTitle, nChars) > 0)
+            {
+                // 过滤非法路径字符
+                saveTitle = new string(windowTitle.ToString()
+                    .Where(c => !Path.GetInvalidFileNameChars().Contains(c))
+                    .ToArray()).Trim();
+
+                if (string.IsNullOrEmpty(saveTitle)) saveTitle = "Untitled";
+            }
+            else
+            {
+                saveTitle = "Desktop";
+            }
+            // 转换乱码
+            if (config.IfAutoConvert) saveTitle = GbkValidator.ConvertGbkJisIfJis(saveTitle);
+            return saveTitle;
+        }
+
+        private bool IsFullScreen(Rectangle windowBounds)
+        {
+            // 全屏判断（考虑任务栏存在的情况）
+            var screenBounds = Screen.PrimaryScreen.Bounds;
+
+            // 允许 2px 的误差容限（针对某些窗口管理器边框）
+            return Math.Abs(windowBounds.Left) <= 2 &&
+                   Math.Abs(windowBounds.Top) <= 2 &&
+                   Math.Abs(windowBounds.Right - screenBounds.Width) <= 2 &&
+                   Math.Abs(windowBounds.Bottom - screenBounds.Height) <= 2;
+        }
+
+        private Rectangle getRectangle()
+        {
+            IntPtr hWnd = GetForegroundWindow();
+            GetWindowRect(hWnd, out RECT windowRect);
+            return new Rectangle(
+                windowRect.Left + border,
+                windowRect.Top + border,
+                windowRect.Right - windowRect.Left - border * 2,
+                windowRect.Bottom - windowRect.Top - border * 2);
+        }
+
+        private int _get_dpi()
         {
 
+            using (ManagementClass mc = new ManagementClass("Win32_DesktopMonitor"))
+            {
+                using (ManagementObjectCollection moc = mc.GetInstances())
+                {
+                    foreach (ManagementObject each in moc)
+                    {
+                        return int.Parse((each.Properties["PixelsPerXLogicalInch"].Value.ToString()));
+                    }
+                }
+            }
+            return 96;
+        }
+
+        private double getSystemDpi() 
+        {
+            return (double)_get_dpi() / 96.0;
         }
     }
 }

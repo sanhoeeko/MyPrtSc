@@ -12,6 +12,7 @@ namespace MyPrtSc
         public string DocString { get; set; }
         public string BaseDir { get; set; }
         public bool IfAutoConvert {  get; set; }
+        public bool IfOptimizePng {  get; set; }
 
         public AppConfig()
         {
@@ -47,16 +48,8 @@ namespace MyPrtSc
         public static AppConfig Load()
         {
             EnsureConfigExists();
-            var config = new AppConfig();
             var json = File.ReadAllText(config_path);
-            var loaded = JsonConvert.DeserializeObject<AppConfig>(json);
-
-            // 加载json文件中的各个字段
-            config.DocString = loaded.DocString;
-            config.BaseDir = loaded.BaseDir;
-            config.IfAutoConvert = loaded.IfAutoConvert;
-
-            return config;
+            return JsonConvert.DeserializeObject<AppConfig>(json);
         }
     }
 }

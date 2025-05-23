@@ -1,5 +1,6 @@
 {
-    "DocString": "修改后请重启程序; 如遇加载失败，请删除此文件，软件将自动恢复默认值; BaseDir: 截图保存的根目录; IfAutoConvert: 是否自动转换日文乱码",
+    "DocString": "修改后请重启程序; 如遇加载失败，请删除此文件，软件将自动恢复默认值; BaseDir: 截图保存的根目录; IfAutoConvert: 是否自动转换日文乱码; IfOptimizePng: 是否存储为体积更小的PNG图片",
     "BaseDir": "D:/MyPrtSc_screenshot",
-    "IfAutoConvert": true
+    "IfAutoConvert": true,
+    "IfOptimizePng": true
 }
