@@ -13,6 +13,7 @@ namespace MyPrtSc
         public string BaseDir { get; set; }
         public bool IfAutoConvert {  get; set; }
         public bool IfOptimizePng {  get; set; }
+        public bool IfWindowShot { get; set; }
 
         public AppConfig()
         {

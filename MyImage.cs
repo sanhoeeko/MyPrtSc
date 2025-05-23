@@ -1,13 +1,21 @@
-﻿using System;
+﻿using MyPrtSc.Properties;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Reflection;
+using System.Threading.Tasks;
 
 namespace MyPrtSc
 {
     public class MyImage
     {
+        private static bool optipng_initialized = false;
+        private static int optipng_level = 1;
+        public static string tempDir, tempImagePath, optipngPath;
+
         private static Rectangle RectangleMul(Rectangle r, double ratio)
         {
             return new Rectangle(
@@ -37,8 +45,65 @@ namespace MyPrtSc
             return target;
         }
 
-        private static int[] modes = { 0, 1, 2, 3, 4 };
-        public static Bitmap RemoveAlphaChannel(Bitmap source)
+        public static async Task SaveImage(Image image, string outputPath, bool IfOptimize)
+        {
+            if (IfOptimize) await new MyImage().OptimizeImageAsync(image, outputPath);
+            else image.Save(outputPath, ImageFormat.Png);
+        }
+
+        public async Task OptimizeImageAsync(Image image, string outputPath)
+        {
+            // 预处理：丢弃alpha通道
+            image = DropAlphaChannel(image);
+
+            Directory.CreateDirectory(tempDir);
+            image.Save(tempImagePath, System.Drawing.Imaging.ImageFormat.Png);
+
+            // 异步调用optipng.exe
+            var tcs = new TaskCompletionSource<bool>();
+            var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = optipngPath,
+                Arguments = $"-o{optipng_level} -quiet \"{tempImagePath}\"",
+                WindowStyle = ProcessWindowStyle.Hidden,
+                CreateNoWindow = true
+            };
+
+            process.Exited += (s, e) => {
+                File.Move(tempImagePath, outputPath);
+                tcs.SetResult(true);
+            };
+
+            process.EnableRaisingEvents = true;
+            process.Start();
+
+            await tcs.Task;
+        }
+
+        public static void InitializeOptiPng()
+        {
+            if (!optipng_initialized)
+            {
+                // 创建临时目录
+                tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                tempImagePath = Path.Combine(tempDir, "temp.png");
+                Directory.CreateDirectory(tempDir);
+
+                // 从资源中提取optipng.exe
+                optipngPath = Path.Combine(tempDir, "optipng.exe");
+                byte[] exeBytes = Properties.Resources.optipng;
+                if (exeBytes == null || exeBytes.Length == 0)
+                {
+                    throw new FileNotFoundException("未找到嵌入的optipng.exe资源");
+                }
+                File.WriteAllBytes(optipngPath, exeBytes);
+
+                optipng_initialized = true;
+            }
+        }
+
+        public static Image DropAlphaChannel(Image source)
         {
             var target = new Bitmap(source.Width, source.Height, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(target))
@@ -47,50 +112,6 @@ namespace MyPrtSc
                 g.DrawImageUnscaled(source, 0, 0);
             }
             return target;
-        }
-
-        public static byte[] OptimizePng(Bitmap bmp)
-        {
-            byte[] smallestPng = null;
-            foreach (var filterMode in modes) // 遍历所有PNG过滤模式
-            {
-                using (var ms = new MemoryStream())
-                {
-                    SaveOptimizedPng(bmp, ms, filterMode);
-                    if (smallestPng == null || ms.Length < smallestPng.Length)
-                    {
-                        smallestPng = ms.ToArray();
-                    }
-                }
-            }
-            return smallestPng;
-        }
-
-        static void SaveOptimizedPng(Bitmap bmp, Stream stream, int filterOption)
-        {
-            var encoderParams = new EncoderParameters(2);
-
-            // 设置压缩级别为最大（0-100，100对应最大压缩）
-            encoderParams.Param[0] = new EncoderParameter(Encoder.Compression, (long)EncoderValue.CompressionLZW);
-
-            // 设置PNG过滤模式（关键优化参数）
-            encoderParams.Param[1] = new EncoderParameter(Encoder.SaveFlag, filterOption);
-
-            var pngEncoder = GetEncoder(ImageFormat.Png);
-            bmp.Save(stream, pngEncoder, encoderParams);
-        }
-
-        static ImageCodecInfo GetEncoder(ImageFormat format)
-        {
-            ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
-            foreach (ImageCodecInfo codec in codecs)
-            {
-                if (codec.FormatID == format.Guid)
-                {
-                    return codec;
-                }
-            }
-            return null;
         }
     }
 }

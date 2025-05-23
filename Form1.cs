@@ -58,7 +58,7 @@ namespace MyPrtSc
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         private AppConfig config;
-        private int border = 0;
+        private int border = 8;
 
         public Form1()
         {
@@ -94,11 +94,14 @@ namespace MyPrtSc
             base.OnLoad(e);
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
+            // 加载optipng.exe
+            if (config.IfOptimizePng) MyImage.InitializeOptiPng();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             UnhookWindowsHookEx(_hookID); // 卸载钩子
+            if(config.IfOptimizePng) Directory.Delete(MyImage.tempDir, true);  // 卸载optipng.exe
             _trayIcon.Dispose();
             base.OnFormClosing(e);
         }
@@ -143,42 +146,19 @@ namespace MyPrtSc
                 {
                     using (var image = Clipboard.GetImage())
                     {
-                        if (config.IfOptimizePng)
+                        // 获取焦点窗口范围
+                        var windowBounds = getRectangle();
+                        if(!config.IfWindowShot || IsFullScreen(windowBounds))
                         {
-                            using (var bmp = new Bitmap(image.Width, image.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
-                            {
-                                using (var g = Graphics.FromImage(bmp))
-                                {
-                                    // 将剪贴板中的图片写入Bitmap img
-                                    g.DrawImage(image, 0, 0);
-                                }
-                                using (var rgbBmp = MyImage.RemoveAlphaChannel(bmp))
-                                {
-                                    // 尝试多种filter，压缩png
-                                    var optimizedData = MyImage.OptimizePng(bmp);
-
-                                    // 保存
-                                    File.WriteAllBytes(path, optimizedData);
-                                }
-                            }
+                            // 直接保存
+                            MyImage.SaveImage(image, path, config.IfOptimizePng);
                         }
                         else
                         {
-                            // 获取焦点窗口范围
-                            var windowBounds = getRectangle();
-                            if(IsFullScreen(windowBounds))
-                            {
-                                // 直接保存
-                                image.Save(path, ImageFormat.Png);
-                            }
-                            else
-                            {
-                                // 裁剪后保存
-                                using (var croppedImage = MyImage.CropImage(image, windowBounds, getSystemDpi()))
-                                {
-                                    croppedImage.Save(path, ImageFormat.Png);
-                                }
-                            }
+                            // 裁剪后保存
+                            MyImage.SaveImage(
+                                MyImage.CropImage(image, windowBounds, getSystemDpi()),
+                                path, config.IfOptimizePng);
                         }
                         _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
                     }
@@ -234,9 +214,9 @@ namespace MyPrtSc
             GetWindowRect(hWnd, out RECT windowRect);
             return new Rectangle(
                 windowRect.Left + border,
-                windowRect.Top + border,
+                windowRect.Top,
                 windowRect.Right - windowRect.Left - border * 2,
-                windowRect.Bottom - windowRect.Top - border * 2);
+                windowRect.Bottom - windowRect.Top - border);
         }
 
         private int _get_dpi()
