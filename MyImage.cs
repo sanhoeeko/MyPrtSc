@@ -14,7 +14,7 @@ namespace MyPrtSc
     {
         private static bool optipng_initialized = false;
         private static int optipng_level = 1;
-        public static string tempDir, tempImagePath, optipngPath;
+        public static string tempDir, optipngPath;
 
         private static Rectangle RectangleMul(Rectangle r, double ratio)
         {
@@ -57,6 +57,7 @@ namespace MyPrtSc
             image = DropAlphaChannel(image);
 
             Directory.CreateDirectory(tempDir);
+            string tempImagePath = Path.Combine(tempDir, Guid.NewGuid().ToString() + ".png");
             image.Save(tempImagePath, System.Drawing.Imaging.ImageFormat.Png);
 
             // 异步调用optipng.exe
@@ -87,7 +88,6 @@ namespace MyPrtSc
             {
                 // 创建临时目录
                 tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-                tempImagePath = Path.Combine(tempDir, "temp.png");
                 Directory.CreateDirectory(tempDir);
 
                 // 从资源中提取optipng.exe

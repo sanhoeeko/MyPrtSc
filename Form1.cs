@@ -114,11 +114,15 @@ namespace MyPrtSc
 
                 if (vkCode == VK_SNAPSHOT) // 检测 PrtSc 键
                 {
+                    // 第一时间获取焦点窗口范围和名称
+                    Rectangle windowBounds = getRectangle();
+                    string saveTitle = getSaveTitle();
+
                     // 延时确保系统完成截图到剪贴板
-                    Timer timer = new Timer { Interval = 100 }; // 100ms 延时
+                    Timer timer = new Timer { Interval = 10 }; // 10ms 延时
                     timer.Tick += (s, e) =>
                     {
-                        ProcessClipboardImage();
+                        ProcessClipboardImage(saveTitle, windowBounds);
                         timer.Stop();
                         timer.Dispose();
                     };
@@ -128,12 +132,12 @@ namespace MyPrtSc
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
         }
 
-        private void ProcessClipboardImage()
+        private async void ProcessClipboardImage(string saveTitle, Rectangle windowBounds)
         {
             try
             {
                 // 构建保存路径
-                string saveDir = Path.Combine(config.BaseDir, getSaveTitle());
+                string saveDir = Path.Combine(config.BaseDir, saveTitle);
                 string fileName = $"Screenshot_{DateTime.Now:yyyyMMdd_HHmmssfff}.png";
                 string path = Path.Combine(saveDir, fileName);
 
@@ -146,17 +150,15 @@ namespace MyPrtSc
                 {
                     using (var image = Clipboard.GetImage())
                     {
-                        // 获取焦点窗口范围
-                        var windowBounds = getRectangle();
                         if(!config.IfWindowShot || IsFullScreen(windowBounds))
                         {
                             // 直接保存
-                            MyImage.SaveImage(image, path, config.IfOptimizePng);
+                            await MyImage.SaveImage(image, path, config.IfOptimizePng);
                         }
                         else
                         {
                             // 裁剪后保存
-                            MyImage.SaveImage(
+                            await MyImage.SaveImage(
                                 MyImage.CropImage(image, windowBounds, getSystemDpi()),
                                 path, config.IfOptimizePng);
                         }
@@ -199,24 +201,38 @@ namespace MyPrtSc
         private bool IsFullScreen(Rectangle windowBounds)
         {
             // 全屏判断（考虑任务栏存在的情况）
-            var screenBounds = Screen.PrimaryScreen.Bounds;
+            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
 
             // 允许 2px 的误差容限（针对某些窗口管理器边框）
-            return Math.Abs(windowBounds.Left) <= 2 &&
-                   Math.Abs(windowBounds.Top) <= 2 &&
-                   Math.Abs(windowBounds.Right - screenBounds.Width) <= 2 &&
-                   Math.Abs(windowBounds.Bottom - screenBounds.Height) <= 2;
+            return windowBounds.Left - screenBounds.Left <= 2 &&
+                   windowBounds.Top - screenBounds.Top <= 2 &&
+                   screenBounds.Right - windowBounds.Right <= 2 &&
+                   screenBounds.Bottom - windowBounds.Bottom <= 2;
         }
 
         private Rectangle getRectangle()
         {
+            // 获取窗口矩形范围
             IntPtr hWnd = GetForegroundWindow();
-            GetWindowRect(hWnd, out RECT windowRect);
-            return new Rectangle(
-                windowRect.Left + border,
-                windowRect.Top,
-                windowRect.Right - windowRect.Left - border * 2,
-                windowRect.Bottom - windowRect.Top - border);
+            GetWindowRect(hWnd, out RECT _windowRect);
+            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
+
+            var windowRect = new Rectangle(
+                _windowRect.Left + border,
+                _windowRect.Top,
+                _windowRect.Right - _windowRect.Left - border * 2,
+                _windowRect.Bottom - _windowRect.Top - border);
+
+            return Intersect(windowRect, screenBounds);
+        }
+
+        private Rectangle Intersect(Rectangle a, Rectangle b)
+        {
+            return new Rectangle(Math.Max(a.Left, b.Left),
+                Math.Max(a.Top, b.Top),
+                Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left),
+                Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top)
+            );
         }
 
         private int _get_dpi()
