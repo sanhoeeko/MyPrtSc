@@ -183,12 +183,18 @@ namespace MyPrtSc
                     image = CaptureScreen();
                 }
 
-                // 将截图复制到剪贴板
-                Clipboard.SetImage(image);
+                if (image != null) {
+                    // 去除黑边
+                    if (config.GetBool("IfCropImage")) image = MyImage.CropBitmap(image);
 
-                // 保存截图
-                await MyImage.SaveImage(image, path, config.GetString("Format"));
-                _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
+                    // 将截图复制到剪贴板
+                    Clipboard.SetImage(image);
+
+                    // 保存截图
+                    await MyImage.SaveImage(image, path, config.GetString("Format"));
+                    _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
+                }
+                else throw new Exception("No image is shot!");
             }
             catch (Exception ex)
             {
@@ -285,16 +291,6 @@ namespace MyPrtSc
                 rect.Top * dpi / 96,
                 rect.Width * dpi / 96,
                 rect.Height * dpi / 96
-            );
-        }
-
-        private Rectangle Intersect(Rectangle a, Rectangle b)
-        {
-            return new Rectangle(
-                Math.Max(a.Left, b.Left),
-                Math.Max(a.Top, b.Top),
-                Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left),  // width
-                Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top)   // height
             );
         }
 

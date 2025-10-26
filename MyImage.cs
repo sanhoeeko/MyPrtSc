@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -40,10 +40,7 @@ namespace MyPrtSc
             // 从字符串末尾向前查找连续数字
             for (int i = format.Length - 1; i >= 0; i--)
             {
-                if (char.IsDigit(format[i]))
-                {
-                    numberStart = i;
-                }
+                if (char.IsDigit(format[i])) numberStart = i;
                 else break;
             }
 
@@ -52,10 +49,7 @@ namespace MyPrtSc
 
             // 提取数字部分并转换为整数
             string numberStr = format.Substring(numberStart, numberEnd - numberStart + 1);
-            if (int.TryParse(numberStr, out int result))
-            {
-                return result;
-            }
+            if (int.TryParse(numberStr, out int result)) return result;
             return 0;
         }
 
@@ -137,15 +131,63 @@ namespace MyPrtSc
             }
         }
 
-        public static Image DropAlphaChannel(Image source)
+        public static Image DropAlphaChannel(Image image)
         {
-            var target = new Bitmap(source.Width, source.Height, PixelFormat.Format24bppRgb);
+            var target = new Bitmap(image.Width, image.Height, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(target))
             {
                 g.Clear(Color.White);
-                g.DrawImageUnscaled(source, 0, 0);
+                g.DrawImageUnscaled(image, 0, 0);
             }
             return target;
+        }
+
+        public static Bitmap CropBitmap(Bitmap image)
+        {
+            if (image == null) return null;
+            if (image.Width <= 2 || image.Height <= 2) return new Bitmap(image);
+
+            int left = 0, right = image.Width - 1;
+            int top = 0, bottom = image.Height - 1;
+
+            while (left <= right && IsSingleColorColumn(image, left)) left++;
+            while (right >= left && IsSingleColorColumn(image, right)) right--;
+            while (top <= bottom && IsSingleColorRow(image, top)) top++;
+            while (bottom >= top && IsSingleColorRow(image, bottom)) bottom--;
+
+            if (left > right || top > bottom) return new Bitmap(image);
+
+            int width = right - left + 1;
+            int height = bottom - top + 1;
+            Bitmap croppedImage = new Bitmap(width, height);
+
+            using (Graphics g = Graphics.FromImage(croppedImage))
+            {
+                g.DrawImage(image, new Rectangle(0, 0, width, height),
+                            new Rectangle(left, top, width, height), GraphicsUnit.Pixel);
+            }
+
+            return croppedImage;
+        }
+
+        private static bool IsSingleColorColumn(Bitmap image, int x)
+        {
+            Color firstColor = image.GetPixel(x, 0);
+            for (int y = 1; y < image.Height; y++)
+            {
+                if (image.GetPixel(x, y) != firstColor) return false;
+            }
+            return true;
+        }
+
+        private static bool IsSingleColorRow(Bitmap image, int y)
+        {
+            Color firstColor = image.GetPixel(0, y);
+            for (int x = 1; x < image.Width; x++)
+            {
+                if (image.GetPixel(x, y) != firstColor) return false;
+            }
+            return true;
         }
     }
 }

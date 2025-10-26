@@ -10,6 +10,9 @@ IfAutoConvert = true
 # 若游戏为窗口运行，是否仅截取该窗口
 IfWindowShot = true
 
+# 若截屏区域略大于实际窗口，是否截掉黑边
+IfCropImage = true
+
 # 图片存储配置，有如下几种：
 # PNG	-- 默认值。Windows API原生截图，巨大。
 # PNG+	-- 使用optipng进行png优化，较大但无损。更高的CPU占用，更慢见到结果。
