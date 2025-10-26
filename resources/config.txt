@@ -16,3 +16,7 @@ IfWindowShot = true
 # JPG80	-- 保存为jpg，较小但有损。数字"80"表示图片质量，可取0-100。
 # AVIF80	-- 保存为avif，微小但有损。数字"80"表示图片质量，可取0-100。
 Format = JPG80
+
+# 截图热键设置，支持键盘上的所有单个按键
+# 普通字符, SPACE, UP, DOWN, LEFT, RIGHT, INSERT, DELETE, HOME, END, PAGEUP, PAGEDOWN, SHIFT, ALT, CTRL, CAPSLOCK, ESC, TAB, ENTER, BACKSPACE, WIN
+HOTKEY_A = PRTSC

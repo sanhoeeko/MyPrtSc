@@ -16,11 +16,12 @@ namespace MyPrtSc
     {
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
-        private const int VK_SNAPSHOT = 0x2C; // PrtSc 键的虚拟键码
 
         private static IntPtr _hookID = IntPtr.Zero;
         private static LowLevelKeyboardProc _proc;
         private readonly NotifyIcon _trayIcon;
+        private int? _customHotkeyCode = null; // 存储自定义热键的虚拟键码
+        private string _customHotkeyName = null; // 存储自定义热键的名称
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -48,9 +49,6 @@ namespace MyPrtSc
         [DllImport("user32.dll")]
         private static extern int GetSystemMetrics(int nIndex);
 
-        private const uint SRCCOPY = 0x00CC0020;
-        private const uint PW_CLIENTONLY = 0x00000001;
-        private const uint PW_RENDERFULLCONTENT = 0x00000002;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT
@@ -72,6 +70,9 @@ namespace MyPrtSc
 
             // 读取或初始化配置文件
             config = AppConfig.Load();
+            
+            // 读取自定义热键配置
+            LoadCustomHotkey();
 
             // 初始化系统托盘图标
             WindowState = FormWindowState.Minimized;
@@ -108,13 +109,39 @@ namespace MyPrtSc
             base.OnFormClosing(e);
         }
 
+        private void LoadCustomHotkey()
+        {
+            string hotkeyStr = config.GetString("HOTKEY_A");
+            if (string.IsNullOrEmpty(hotkeyStr))
+                return;
+
+            // 使用HotKeyManager解析热键配置
+            if (HotKeyManager.ParseHotkey(hotkeyStr, out int virtualKeyCode, out string keyName))
+            {
+                _customHotkeyCode = virtualKeyCode;
+                _customHotkeyName = keyName;
+            }
+        }
+
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
             {
                 int vkCode = Marshal.ReadInt32(lParam);
+                bool shouldCapture = false;
 
-                if (vkCode == VK_SNAPSHOT) // 检测 PrtSc 键
+                if (_customHotkeyCode.HasValue && !string.IsNullOrEmpty(_customHotkeyName))
+                {
+                    // 使用HotKeyManager检查热键匹配
+                    shouldCapture = HotKeyManager.IsHotkeyMatch(vkCode, _customHotkeyCode.Value, _customHotkeyName);
+                }
+                else
+                {
+                    // 使用默认的PrtSc键
+                    shouldCapture = (vkCode == HotKeyManager.VK_SNAPSHOT);
+                }
+
+                if (shouldCapture)
                 {
                     IntPtr hWnd = GetForegroundWindow();
                     string saveTitle = getSaveTitle(hWnd);
@@ -155,6 +182,11 @@ namespace MyPrtSc
                     // 全屏截图
                     image = CaptureScreen();
                 }
+
+                // 将截图复制到剪贴板
+                Clipboard.SetImage(image);
+
+                // 保存截图
                 await MyImage.SaveImage(image, path, config.GetString("Format"));
                 _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
             }
