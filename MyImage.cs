@@ -1,10 +1,11 @@
+using ImageMagick;
 using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
-using ImageMagick;
 
 namespace MyPrtSc
 {
@@ -13,6 +14,10 @@ namespace MyPrtSc
         private static bool optipng_initialized = false;
         private static int optipng_level = 1;
         public static string tempDir, optipngPath;
+
+        public static string magick_dll_path = Directory.GetFiles(
+            Directory.GetCurrentDirectory(), "Magick.Native-Q16-*.dll").FirstOrDefault();
+        public static bool use_magick = !(magick_dll_path == null);
 
         public static int ParseFileFormat(string format)
         {
@@ -59,8 +64,18 @@ namespace MyPrtSc
             {
                 case 0: image.Save(outputPath, ImageFormat.Png); break;
                 case 1: await new MyImage().OptimizeImageAsync(image, outputPath); break;
-                case 2: MagicSave(image, outputPath, ParseQuality(format), MagickFormat.Jpg); break;
-                case 3: MagicSave(image, outputPath, ParseQuality(format), MagickFormat.Avif); break;
+                case 2:
+                    {
+                        if (use_magick) MagicSave(image, outputPath, ParseQuality(format), MagickFormat.Jpg);
+                        else SaveImageAsJpeg(image, outputPath, ParseQuality(format));
+                        break;
+                    }
+                case 3:
+                    {
+                        if (use_magick) MagicSave(image, outputPath, ParseQuality(format), MagickFormat.Avif);
+                        else throw new Exception("无法保存为AVIF格式：MagicK DLL 缺失");
+                        break;
+                    }
                 default: throw new NotImplementedException("Unsupported format!");
             }
         }
@@ -78,6 +93,20 @@ namespace MyPrtSc
                 }; 
                 magickImage.Write(outputPath);
             }
+        }
+
+        public static void SaveImageAsJpeg(Image image, string filePath, int quality)
+        {
+            // 获取 JPEG 编码器
+            var jpegEncoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
+            if (jpegEncoder == null) throw new Exception("无法找到 JPEG 编码器");
+
+            // 设置编码参数
+            var encoderParameters = new EncoderParameters(1);
+            encoderParameters.Param[0] = new EncoderParameter(Encoder.Quality, quality);
+
+            // 保存图像
+            image.Save(filePath, jpegEncoder, encoderParameters);
         }
 
         public async Task OptimizeImageAsync(Image image, string outputPath)

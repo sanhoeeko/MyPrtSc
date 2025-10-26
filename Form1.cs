@@ -98,7 +98,7 @@ namespace MyPrtSc
             }
             
             // 加载optipng.exe
-            if (config.GetBool("IfOptipng")) MyImage.InitializeOptiPng();
+            if (config.GetString("Format") == "PNG+") MyImage.InitializeOptiPng();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
