@@ -1,12 +1,10 @@
-﻿using MyPrtSc.Properties;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Reflection;
 using System.Threading.Tasks;
+using ImageMagick;
 
 namespace MyPrtSc
 {
@@ -16,39 +14,76 @@ namespace MyPrtSc
         private static int optipng_level = 1;
         public static string tempDir, optipngPath;
 
-        private static Rectangle RectangleMul(Rectangle r, double ratio)
+        public static int ParseFileFormat(string format)
         {
-            return new Rectangle(
-                (int)Math.Round(r.Left * ratio),
-                (int)Math.Round(r.Top * ratio),
-                (int)Math.Round(r.Width * ratio),
-                (int)Math.Round(r.Height * ratio)
-            );
+            switch (format)
+            {
+                case "PNG": return 0;
+                case "PNG+": return 1;
+            }
+            if (format.StartsWith("JPG")) return 2;
+            if (format.StartsWith("AVIF")) return 3;
+            return -1;
         }
 
-        public static Bitmap CropImage(Image source, Rectangle cropArea, double dpi_ratio)
+        public static string ParseSuffix(string format)
         {
-            // 创建目标位图
-            int physicalWidth = (int)Math.Round(cropArea.Width * dpi_ratio);
-            int physicalHeight = (int)Math.Round(cropArea.Height * dpi_ratio);
-            var target = new Bitmap(physicalWidth, physicalHeight);
+            string[] suffixes = { "png", "png", "jpg", "avif" };
+            return suffixes[ParseFileFormat(format)];
+        }
 
-            // 绘制和裁剪，注意绘制过程中不能做任何插值，否则损失画质
-            using (var g = Graphics.FromImage(target))
+        public static int ParseQuality(string format)
+        {
+            int numberEnd = format.Length - 1;
+            int numberStart = -1;
+
+            // 从字符串末尾向前查找连续数字
+            for (int i = format.Length - 1; i >= 0; i--)
             {
-                g.DrawImage(source,
-                    new Rectangle(0, 0, target.Width, target.Height),
-                    RectangleMul(cropArea, dpi_ratio),
-                    GraphicsUnit.Pixel);
+                if (char.IsDigit(format[i]))
+                {
+                    numberStart = i;
+                }
+                else break;
             }
 
-            return target;
+            // 如果没有找到数字，返回0
+            if (numberStart == -1) return 0;
+
+            // 提取数字部分并转换为整数
+            string numberStr = format.Substring(numberStart, numberEnd - numberStart + 1);
+            if (int.TryParse(numberStr, out int result))
+            {
+                return result;
+            }
+            return 0;
         }
 
-        public static async Task SaveImage(Image image, string outputPath, bool IfOptimize)
+        public static async Task SaveImage(Bitmap image, string outputPath, string format)
         {
-            if (IfOptimize) await new MyImage().OptimizeImageAsync(image, outputPath);
-            else image.Save(outputPath, ImageFormat.Png);
+            switch (ParseFileFormat(format))
+            {
+                case 0: image.Save(outputPath, ImageFormat.Png); break;
+                case 1: await new MyImage().OptimizeImageAsync(image, outputPath); break;
+                case 2: MagicSave(image, outputPath, ParseQuality(format), MagickFormat.Jpg); break;
+                case 3: MagicSave(image, outputPath, ParseQuality(format), MagickFormat.Avif); break;
+                default: throw new NotImplementedException("Unsupported format!");
+            }
+        }
+
+        public static void MagicSave(Bitmap image, string outputPath, int quality, MagickFormat mgkFormat)
+        {
+            using (var ms = new MemoryStream())
+            {
+                image.Save(ms, ImageFormat.Bmp); // 先保存BMP到内存流
+                ms.Position = 0;
+                var magickImage = new MagickImage(ms)  // 用MagickImage从流读取
+                {
+                    Format = mgkFormat,
+                    Quality = (uint)quality
+                }; 
+                magickImage.Write(outputPath);
+            }
         }
 
         public async Task OptimizeImageAsync(Image image, string outputPath)

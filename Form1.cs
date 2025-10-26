@@ -3,7 +3,6 @@ using System;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -131,7 +130,8 @@ namespace MyPrtSc
             {
                 // 构建保存路径
                 string saveDir = Path.Combine(config.GetString("BaseDir"), saveTitle);
-                string fileName = $"Screenshot_{DateTime.Now:yyyyMMdd_HHmmssfff}.png";
+                string format = MyImage.ParseSuffix(config.GetString("Format"));
+                string fileName = $"Screenshot_{DateTime.Now:yyyyMMdd_HHmmss_fff}.{format}";
                 string path = Path.Combine(saveDir, fileName);
 
                 // 确保目录存在
@@ -155,7 +155,7 @@ namespace MyPrtSc
                     // 全屏截图
                     image = CaptureScreen();
                 }
-                await MyImage.SaveImage(image, path, config.GetBool("IfOptipng"));
+                await MyImage.SaveImage(image, path, config.GetString("Format"));
                 _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
             }
             catch (Exception ex)

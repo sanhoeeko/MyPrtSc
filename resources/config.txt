@@ -10,5 +10,9 @@ IfAutoConvert = true
 # 若游戏为窗口运行，是否仅截取该窗口
 IfWindowShot = true
 
-# 是否存储为体积更小的PNG图片（更高的CPU占用，更慢见到结果）
-IfOptipng = true
+# 图片存储配置，有如下几种：
+# PNG	-- 默认值。Windows API原生截图，巨大。
+# PNG+	-- 使用optipng进行png优化，较大但无损。更高的CPU占用，更慢见到结果。
+# JPG80	-- 保存为jpg，较小但有损。数字"80"表示图片质量，可取0-100。
+# AVIF80	-- 保存为avif，微小但有损。数字"80"表示图片质量，可取0-100。
+Format = JPG80
