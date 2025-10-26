@@ -53,7 +53,6 @@ namespace MyPrtSc
 
         public async Task OptimizeImageAsync(Image image, string outputPath)
         {
-            // 预处理：丢弃alpha通道
             image = DropAlphaChannel(image);
 
             Directory.CreateDirectory(tempDir);
@@ -108,7 +107,7 @@ namespace MyPrtSc
             var target = new Bitmap(source.Width, source.Height, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(target))
             {
-                g.Clear(Color.White); // 可选：设置用于替换Alpha通道的背景色
+                g.Clear(Color.White);
                 g.DrawImageUnscaled(source, 0, 0);
             }
             return target;

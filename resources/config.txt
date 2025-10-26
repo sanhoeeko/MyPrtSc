@@ -1,0 +1,4 @@
+BaseDir = D:\MyPrtSc_screenshot
+IfAutoConvert = true
+IfOptiPng = true
+IfWindowShot = true

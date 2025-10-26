@@ -95,13 +95,13 @@ namespace MyPrtSc
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
             // 加载optipng.exe
-            if (config.IfOptimizePng) MyImage.InitializeOptiPng();
+            if (config.GetBool("IfOptipng")) MyImage.InitializeOptiPng();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             UnhookWindowsHookEx(_hookID); // 卸载钩子
-            if(config.IfOptimizePng) Directory.Delete(MyImage.tempDir, true);  // 卸载optipng.exe
+            if(config.GetBool("IfOptipng")) Directory.Delete(MyImage.tempDir, true);  // 卸载optipng.exe
             _trayIcon.Dispose();
             base.OnFormClosing(e);
         }
@@ -137,30 +137,36 @@ namespace MyPrtSc
             try
             {
                 // 构建保存路径
-                string saveDir = Path.Combine(config.BaseDir, saveTitle);
+                string saveDir = Path.Combine(config.GetString("BaseDir"), saveTitle);
                 string fileName = $"Screenshot_{DateTime.Now:yyyyMMdd_HHmmssfff}.png";
                 string path = Path.Combine(saveDir, fileName);
 
                 // 确保目录存在
-                if (!Directory.Exists(config.BaseDir))Directory.CreateDirectory(config.BaseDir);
-                if (!Directory.Exists(saveDir))Directory.CreateDirectory(saveDir);
+                if (!Directory.Exists(config.GetString("BaseDir")))
+                {
+                    Directory.CreateDirectory(config.GetString("BaseDir"));
+                }
+                if (!Directory.Exists(saveDir))
+                {
+                    Directory.CreateDirectory(saveDir);
+                }
 
                 // 保存图像
                 if (Clipboard.ContainsImage())
                 {
                     using (var image = Clipboard.GetImage())
                     {
-                        if(!config.IfWindowShot || IsFullScreen(windowBounds))
+                        if(!config.GetBool("IfWindowShot") || IsFullScreen(windowBounds))
                         {
                             // 直接保存
-                            await MyImage.SaveImage(image, path, config.IfOptimizePng);
+                            await MyImage.SaveImage(image, path, config.GetBool("IfOptipng"));
                         }
                         else
                         {
                             // 裁剪后保存
                             await MyImage.SaveImage(
                                 MyImage.CropImage(image, windowBounds, getSystemDpi()),
-                                path, config.IfOptimizePng);
+                                path, config.GetBool("IfOptipng"));
                         }
                         _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
                     }
@@ -194,7 +200,7 @@ namespace MyPrtSc
                 saveTitle = "Desktop";
             }
             // 转换乱码
-            if (config.IfAutoConvert) saveTitle = GbkValidator.ConvertGbkJisIfJis(saveTitle);
+            if (config.GetBool("IfAutoConvert")) saveTitle = GbkValidator.ConvertGbkJisIfJis(saveTitle);
             return saveTitle;
         }
 
