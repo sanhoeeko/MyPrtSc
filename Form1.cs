@@ -46,6 +46,13 @@ namespace MyPrtSc
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        private const uint SRCCOPY = 0x00CC0020;
+        private const uint PW_CLIENTONLY = 0x00000001;
+        private const uint PW_RENDERFULLCONTENT = 0x00000002;
+
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT
         {
@@ -68,6 +75,8 @@ namespace MyPrtSc
             config = AppConfig.Load();
 
             // 初始化系统托盘图标
+            WindowState = FormWindowState.Minimized;
+            ShowInTaskbar = false;
             _trayIcon = new NotifyIcon
             {
                 Icon = Resources.icon,
@@ -87,13 +96,7 @@ namespace MyPrtSc
                 _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc,
                     GetModuleHandle(curModule.ModuleName), 0);
             }
-        }
-
-        protected override void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            this.WindowState = FormWindowState.Minimized;
-            this.ShowInTaskbar = false;
+            
             // 加载optipng.exe
             if (config.GetBool("IfOptipng")) MyImage.InitializeOptiPng();
         }
@@ -114,25 +117,15 @@ namespace MyPrtSc
 
                 if (vkCode == VK_SNAPSHOT) // 检测 PrtSc 键
                 {
-                    // 第一时间获取焦点窗口范围和名称
-                    Rectangle windowBounds = getRectangle();
-                    string saveTitle = getSaveTitle();
-
-                    // 延时确保系统完成截图到剪贴板
-                    Timer timer = new Timer { Interval = 10 }; // 10ms 延时
-                    timer.Tick += (s, e) =>
-                    {
-                        ProcessClipboardImage(saveTitle, windowBounds);
-                        timer.Stop();
-                        timer.Dispose();
-                    };
-                    timer.Start();
+                    IntPtr hWnd = GetForegroundWindow();
+                    string saveTitle = getSaveTitle(hWnd);
+                    Screenshot(saveTitle, hWnd);
                 }
             }
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
         }
 
-        private async void ProcessClipboardImage(string saveTitle, Rectangle windowBounds)
+        private async void Screenshot(string saveTitle, IntPtr hWnd)
         {
             try
             {
@@ -151,39 +144,72 @@ namespace MyPrtSc
                     Directory.CreateDirectory(saveDir);
                 }
 
-                // 保存图像
-                if (Clipboard.ContainsImage())
+                Bitmap image = null;
+                if (config.GetBool("IfWindowShot") && !IsFullScreen(hWnd))
                 {
-                    using (var image = Clipboard.GetImage())
-                    {
-                        if(!config.GetBool("IfWindowShot") || IsFullScreen(windowBounds))
-                        {
-                            // 直接保存
-                            await MyImage.SaveImage(image, path, config.GetBool("IfOptipng"));
-                        }
-                        else
-                        {
-                            // 裁剪后保存
-                            await MyImage.SaveImage(
-                                MyImage.CropImage(image, windowBounds, getSystemDpi()),
-                                path, config.GetBool("IfOptipng"));
-                        }
-                        _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
-                    }
+                    // 窗口截图
+                    image = CaptureWindow(hWnd);
                 }
+                else
+                {
+                    // 全屏截图
+                    image = CaptureScreen();
+                }
+                await MyImage.SaveImage(image, path, config.GetBool("IfOptipng"));
+                _trayIcon.ShowBalloonTip(3000, "成功", $"截图已保存至 {path}", ToolTipIcon.Info);
             }
             catch (Exception ex)
             {
                 _trayIcon.ShowBalloonTip(3000, "错误", $"保存失败，发生了异常: {ex.Message}", ToolTipIcon.Error);
             }
         }
+
+        private Bitmap CaptureRegion(int left, int top, int width, int height)
+        {
+            // 使用物理像素创建位图
+            Bitmap bitmap = new Bitmap(width, height);
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                // 使用物理坐标进行屏幕捕获
+                g.CopyFromScreen(left, top, 0, 0, bitmap.Size, CopyPixelOperation.SourceCopy);
+            }
+            return bitmap;
+        }
+
+        private Bitmap CaptureWindow(IntPtr hWnd)
+        {
+            // 获取窗口矩形（转换为物理坐标）
+            Rectangle window_region = Scale(windowRectangle(hWnd), GetDpi());
+            // 通用截图
+            return CaptureRegion(window_region.Left, window_region.Top, window_region.Width, window_region.Height);
+        }
+
+        private Bitmap CaptureScreen()
+        {
+            // 获取屏幕矩形（转换为物理坐标）
+            Rectangle screen_rect = Scale(screenRectangle(), GetDpi());
+            // 通用截图
+            return CaptureRegion(screen_rect.Left, screen_rect.Top, screen_rect.Width, screen_rect.Height);
+        }
+
+        private Rectangle screenRectangle()
+        {
+            return new Rectangle(
+                 GetSystemMetrics(76), GetSystemMetrics(77), GetSystemMetrics(78), GetSystemMetrics(79)
+            );
+        }
+
+        private Rectangle windowRectangle(IntPtr hWnd)
+        {
+            GetWindowRect(hWnd, out RECT rect);
+            return fromRECT(rect);
+        }
         
-        private string getSaveTitle()
+        private string getSaveTitle(IntPtr hWnd)
         {
             // 获取当前焦点窗口标题
             const int nChars = 256;
             StringBuilder windowTitle = new StringBuilder(nChars);
-            IntPtr hWnd = GetForegroundWindow();
 
             string saveTitle;
             if (GetWindowText(hWnd, windowTitle, nChars) > 0)
@@ -204,62 +230,74 @@ namespace MyPrtSc
             return saveTitle;
         }
 
-        private bool IsFullScreen(Rectangle windowBounds)
+        private bool IsFullScreen(IntPtr hWnd)
         {
-            // 全屏判断（考虑任务栏存在的情况）
-            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
 
-            // 允许 2px 的误差容限（针对某些窗口管理器边框）
-            return windowBounds.Left - screenBounds.Left <= 2 &&
-                   windowBounds.Top - screenBounds.Top <= 2 &&
-                   screenBounds.Right - windowBounds.Right <= 2 &&
-                   screenBounds.Bottom - windowBounds.Bottom <= 2;
+            Rectangle screen_rect = screenRectangle();
+            Rectangle window_rect = windowRectangle(hWnd);
+            return window_rect.Left - screen_rect.Left <= border &&
+                   window_rect.Top - screen_rect.Top <= border &&
+                   screen_rect.Right - window_rect.Right <= border &&
+                   screen_rect.Bottom - window_rect.Bottom <= border;
         }
 
-        private Rectangle getRectangle()
+        private Rectangle fromRECT(RECT rect)
         {
-            // 获取窗口矩形范围
-            IntPtr hWnd = GetForegroundWindow();
-            GetWindowRect(hWnd, out RECT _windowRect);
-            Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
+            return Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        }
 
-            var windowRect = new Rectangle(
-                _windowRect.Left + border,
-                _windowRect.Top,
-                _windowRect.Right - _windowRect.Left - border * 2,
-                _windowRect.Bottom - _windowRect.Top - border);
-
-            return Intersect(windowRect, screenBounds);
+        private Rectangle Scale(Rectangle rect, int dpi)
+        {
+            return new Rectangle(
+                rect.Left * dpi / 96,
+                rect.Top * dpi / 96,
+                rect.Width * dpi / 96,
+                rect.Height * dpi / 96
+            );
         }
 
         private Rectangle Intersect(Rectangle a, Rectangle b)
         {
-            return new Rectangle(Math.Max(a.Left, b.Left),
+            return new Rectangle(
+                Math.Max(a.Left, b.Left),
                 Math.Max(a.Top, b.Top),
-                Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left),
-                Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top)
+                Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left),  // width
+                Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top)   // height
             );
+        }
+
+        private int GetDpi()
+        {
+            int dpiResult = 96;
+
+            // 在单独线程中执行以避免COM冲突
+            System.Threading.Thread dpiThread = new System.Threading.Thread(() =>
+            {
+                dpiResult = _get_dpi();
+            });
+            dpiThread.Start();
+            dpiThread.Join(); 
+            
+            return dpiResult;
         }
 
         private int _get_dpi()
         {
-
-            using (ManagementClass mc = new ManagementClass("Win32_DesktopMonitor"))
+            try
             {
-                using (ManagementObjectCollection moc = mc.GetInstances())
+                using (ManagementClass mc = new ManagementClass("Win32_DesktopMonitor"))
                 {
-                    foreach (ManagementObject each in moc)
+                    using (ManagementObjectCollection moc = mc.GetInstances())
                     {
-                        return int.Parse((each.Properties["PixelsPerXLogicalInch"].Value.ToString()));
+                        foreach (ManagementObject each in moc)
+                        {
+                            return int.Parse((each.Properties["PixelsPerXLogicalInch"].Value.ToString()));
+                        }
                     }
                 }
             }
+            catch {}
             return 96;
-        }
-
-        private double getSystemDpi() 
-        {
-            return (double)_get_dpi() / 96.0;
         }
     }
 }

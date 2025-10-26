@@ -1,4 +1,14 @@
+# MyPrtSc的配置文件
+# 修改配置后请重启程序。 如遇程序启动失败，请删除此文件，软件将自动恢复默认值
+
+# 截图保存的根目录
 BaseDir = D:\MyPrtSc_screenshot
+
+# 是否转换窗口名称中的日文乱码
 IfAutoConvert = true
-IfOptiPng = true
+
+# 若游戏为窗口运行，是否仅截取该窗口
 IfWindowShot = true
+
+# 是否存储为体积更小的PNG图片（更高的CPU占用，更慢见到结果）
+IfOptipng = true
