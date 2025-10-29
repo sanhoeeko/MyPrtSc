@@ -112,14 +112,28 @@ namespace MyPrtSc
         private void LoadCustomHotkey()
         {
             string hotkeyStr = config.GetString("HOTKEY_A");
+            
+            // 当热键字符串为空时，使用默认的PrtSc键
             if (string.IsNullOrEmpty(hotkeyStr))
+            {
+                _customHotkeyCode = (int)Keys.Snapshot;
+                _customHotkeyName = "Snapshot";
                 return;
+            }
 
             // 使用HotKeyManager解析热键配置
             if (HotKeyManager.ParseHotkey(hotkeyStr, out int virtualKeyCode, out string keyName))
             {
                 _customHotkeyCode = virtualKeyCode;
                 _customHotkeyName = keyName;
+            }
+            else
+            {
+                // 热键解析失败，显示Windows通知
+                _trayIcon.ShowBalloonTip(3000, "配置错误", $"无法识别的热键: {hotkeyStr}\n请检查配置文件中的热键设置。", ToolTipIcon.Error);
+                // 解析失败时也使用默认的PrtSc键
+                _customHotkeyCode = (int)Keys.Snapshot;
+                _customHotkeyName = "Snapshot";
             }
         }
 
@@ -128,20 +142,10 @@ namespace MyPrtSc
             if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
             {
                 int vkCode = Marshal.ReadInt32(lParam);
-                bool shouldCapture = false;
 
-                if (_customHotkeyCode.HasValue && !string.IsNullOrEmpty(_customHotkeyName))
-                {
-                    // 使用HotKeyManager检查热键匹配
-                    shouldCapture = HotKeyManager.IsHotkeyMatch(vkCode, _customHotkeyCode.Value, _customHotkeyName);
-                }
-                else
-                {
-                    // 使用默认的PrtSc键
-                    shouldCapture = (vkCode == HotKeyManager.VK_SNAPSHOT);
-                }
-
-                if (shouldCapture)
+                // 由于在LoadCustomHotkey中已经统一设置了_customHotkeyCode和_customHotkeyName（即使配置为空或解析失败）
+                // 所以这里只需要直接比较即可
+                if (_customHotkeyCode.HasValue && vkCode == _customHotkeyCode.Value)
                 {
                     IntPtr hWnd = GetForegroundWindow();
                     string saveTitle = getSaveTitle(hWnd);
@@ -326,6 +330,11 @@ namespace MyPrtSc
             }
             catch {}
             return 96;
+        }
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
         }
     }
 }
