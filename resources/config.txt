@@ -21,5 +21,6 @@ IfCropImage = true
 Format = JPG80
 
 # 截图热键设置，支持键盘上的所有单个按键
-# 普通字符, SPACE, UP, DOWN, LEFT, RIGHT, INSERT, DELETE, HOME, END, PAGEUP, PAGEDOWN, SHIFT, ALT, CTRL, CAPSLOCK, ESC, TAB, ENTER, BACKSPACE, WIN
+# 例如：字母键, 数字键, PAGEUP, PAGEDOWN, SHIFT, ALT, CTRL, ESC, BACKSPACE, WIN, ...
+# 详细的热键名称请参见：https://learn.microsoft.com/zh-cn/dotnet/api/system.windows.forms.keys
 HOTKEY_A = PRTSC
